@@ -1,9 +1,5 @@
 module TwitterCluster
   module Tweet
-    PROFILE_SPECIAL_WORDS = %w(20↑ 成人済 腐女子)
-    PROFILE_SPECIAL_REGEXP = nil
-    PROFILE_EXCLUDE_WORDS = %w(in at of my to no er by is RT DM the and for you inc Inc com from info next gmail 好き こと 最近 紹介 連載 発売 依頼 情報 さん ちゃん くん 発言 関係 もの 活動 見解 所属 組織 代表 連絡 大好き サイト ブログ つぶやき 株式会社 最新 こちら 届け お仕事 ツイ 返信 プロ 今年 リプ ヘッダー アイコン アカ アカウント ツイート たま ブロック 無言 時間 お願い お願いします お願いいたします イベント フォロー フォロワー フォロバ スタッフ 自動 手動 迷言 名言 非公式 リリース 問い合わせ ツイッター)
-    PROFILE_EXCLUDE_REGEXP = Regexp.union(/\w+@\w+\.(com|co\.jp)/, %r[\d{2,4}(年|/)\d{1,2}(月|/)\d{1,2}日], %r[\d{1,2}/\d{1,2}], /\d{2}th/, URI.regexp)
 
     def tweet_clusters(tweets, limit: 10, debug: false)
       return {} if tweets.blank?
@@ -76,72 +72,6 @@ module TwitterCluster
     end
 
     private
-
-    def filter(lists, min:)
-      min = [min, lists.size].min
-      _lists = []
-      3.times do |i|
-        _lists = lists.select { |li| yield(li, i) }
-        break if _lists.size >= min
-      end
-      _lists
-    end
-
-    def count_by_word(texts, delim: nil, tagger: nil, min_length: 2, max_length: 5, special_words: [], exclude_words: [], special_regexp: nil, exclude_regexp: nil)
-      texts = texts.dup
-
-      frequency = Hash.new(0)
-      if special_words.any?
-        texts.each do |text|
-          special_words.map { |sw| [sw, text.scan(sw)] }
-              .delete_if { |_, matched| matched.empty? }
-              .each_with_object(frequency) { |(word, matched), memo| memo[word] += matched.size }
-
-        end
-      end
-
-      if exclude_regexp
-        texts = texts.map { |t| t.remove(exclude_regexp) }
-      end
-
-      if delim
-        texts = texts.map { |t| t.split(delim) }.flatten.map(&:strip)
-      end
-
-      if tagger
-        texts = texts.map { |t| tagger.parse(t).split("\n") }.flatten.
-            select { |line| line.include?('名詞') }.
-            map { |line| line.split("\t")[0] }
-      end
-
-      texts.delete_if { |w| w.empty? || w.size < min_length || max_length < w.size || exclude_words.include?(w) || w.match(/\d{2}/) }.
-          each_with_object(frequency) { |word, memo| memo[word] += 1 }.
-          sort_by { |k, v| [-v, -k.size] }.to_h
-    end
-
-    def count_freq_words(texts, special_words: [], exclude_words: [], special_regexp: nil, exclude_regexp: nil, debug: false)
-      candidates, remains = texts.partition { |desc| desc.scan('/').size > 2 }
-      slash_freq = count_by_word(candidates, delim: '/', exclude_regexp: exclude_regexp)
-      puts "words splitted by /: #{slash_freq.take(10)}" if debug
-
-      candidates, remains = remains.partition { |desc| desc.scan('|').size > 2 }
-      pipe_freq = count_by_word(candidates, delim: '|', exclude_regexp: exclude_regexp)
-      puts "words splitted by |: #{pipe_freq.take(10)}" if debug
-
-      noun_freq = count_by_word(remains, tagger: build_tagger, special_words: special_words, exclude_words: exclude_words, special_regexp: special_regexp, exclude_regexp: exclude_regexp)
-      puts "words tagged as noun: #{noun_freq.take(10)}" if debug
-
-      slash_freq.merge(pipe_freq) { |_, old, neww| old + neww }.
-          merge(noun_freq) { |_, old, neww| old + neww }.sort_by { |k, v| [-v, -k.size] }
-    end
-
-    def build_tagger
-      require 'mecab'
-      MeCab::Tagger.new("-d #{`mecab-config --dicdir`.chomp}/mecab-ipadic-neologd/")
-    rescue => e
-      puts "Add gem 'mecab' to your Gemfile."
-      raise e
-    end
 
     def include_hashtags?(tweet)
       tweet.entities&.hashtags&.any?
